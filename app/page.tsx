@@ -14,6 +14,12 @@ export default function Home() {
         >
           시작하기
         </a>
+        <a
+          href="/create/preview?id=demo-coffee"
+          className="rounded-lg border border-gray-300 px-6 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50"
+        >
+          데모 미리보기
+        </a>
       </div>
       <p className="mt-16 text-xs text-gray-400">
         MVP · Smart Store 전용 (쿠팡·해외 준비중)
