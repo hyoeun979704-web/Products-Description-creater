@@ -1,9 +1,10 @@
 import type { GenerationOutput } from "@/lib/claude/schema";
+import type { PlatformId } from "@/lib/platforms/types";
 
 export type FixtureGeneration = {
   id: string;
   session_id: string;
-  platform: "smartstore";
+  platform: PlatformId;
   output_json: GenerationOutput;
   edited_json: GenerationOutput | null;
   // Photos the user "uploaded" in the dummy flow. A real session uses signed

@@ -1,7 +1,7 @@
 import type { GenerationPhoto } from "@/lib/data/generations";
 import type { TemplateDef, ResolvedSlot } from "@/components/templates/registry";
-import type { UnsplashPool } from "@/lib/data/unsplash";
-import type { UnsplashCategory, SlotHint } from "@/lib/unsplash/categories";
+import type { UnsplashPool, PickRequest } from "@/lib/data/unsplash";
+import type { UnsplashCategory } from "@/lib/unsplash/categories";
 
 /**
  * Bind each template slot to a concrete image URL.
@@ -9,21 +9,22 @@ import type { UnsplashCategory, SlotHint } from "@/lib/unsplash/categories";
  *  - "user-or-unsplash" → user photo if available, else Unsplash
  *  - "unsplash" → always Unsplash
  *
- * Deterministic for a given input + pool; re-rolling is done by the editor
- * via pool.pickFor with an exclude list.
+ * Deterministic when `seedPrefix` is provided: the same inputs produce the
+ * same Unsplash picks across requests, so re-rendering the preview doesn't
+ * shuffle images.
  */
 export async function resolveSlots(
   template: TemplateDef,
   userPhotos: GenerationPhoto[],
   category: UnsplashCategory,
-  pool: UnsplashPool
+  pool: UnsplashPool,
+  seedPrefix?: string
 ): Promise<Record<string, ResolvedSlot>> {
   const out: Record<string, ResolvedSlot> = {};
   const userQueue = [...userPhotos];
-  const usedUnsplashIds: string[] = [];
+  const unsplashRequests: PickRequest[] = [];
 
   for (const slot of template.slots) {
-    const slotHint = sectionToSlotHint(slot.section);
     const wantsUser = slot.source === "user" || slot.source === "user-or-unsplash";
     const userPhoto = wantsUser ? userQueue.shift() : undefined;
 
@@ -31,13 +32,21 @@ export async function resolveSlots(
       out[slot.id] = { slotId: slot.id, url: userPhoto.url, source: "user" };
       continue;
     }
-    if (slot.source === "user") continue; // required user slot left empty — let UI surface it
+    if (slot.source === "user") continue; // required user slot left empty — Step 6 UI surfaces it
 
-    const pick = await pool.pickFor(category, slotHint, usedUnsplashIds);
-    if (!pick) continue;
-    usedUnsplashIds.push(pick.id);
-    out[slot.id] = {
+    unsplashRequests.push({
       slotId: slot.id,
+      hint: slot.slotHint,
+      seed: seedPrefix ? `${seedPrefix}:${slot.id}` : undefined,
+    });
+  }
+
+  const picks = await pool.pickManyFor(category, unsplashRequests);
+  for (const req of unsplashRequests) {
+    const pick = picks[req.slotId];
+    if (!pick) continue;
+    out[req.slotId] = {
+      slotId: req.slotId,
       url: pick.url,
       source: "unsplash",
       credit: {
@@ -47,10 +56,4 @@ export async function resolveSlots(
     };
   }
   return out;
-}
-
-function sectionToSlotHint(section: string): SlotHint {
-  if (section === "hero") return "hero";
-  if (section === "features") return "feature";
-  return "any";
 }

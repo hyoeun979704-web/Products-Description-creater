@@ -22,6 +22,8 @@ export function DummyFeatures({ items, slots }: Props) {
                   src={slot.url}
                   alt={item.title}
                   crossOrigin="anonymous"
+                  loading="lazy"
+                  decoding="async"
                   className="h-48 w-full object-cover"
                 />
               ) : (

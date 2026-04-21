@@ -1,4 +1,5 @@
 import type { GenerationOutput } from "@/lib/claude/schema";
+import type { PlatformId } from "@/lib/platforms/types";
 import { FIXTURE_GENERATIONS } from "@/lib/fixtures/generations";
 
 export type GenerationPhoto = {
@@ -10,7 +11,7 @@ export type GenerationPhoto = {
 export type Generation = {
   id: string;
   sessionId: string;
-  platform: "smartstore";
+  platform: PlatformId;
   inputPhotos: GenerationPhoto[];
   outputJson: GenerationOutput;
   editedJson: GenerationOutput | null;
