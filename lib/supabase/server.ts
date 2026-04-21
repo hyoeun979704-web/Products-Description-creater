@@ -1,27 +1,24 @@
 import "server-only";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { serverEnv } from "@/lib/utils/env";
+import { serverEnv } from "@/lib/utils/env.server";
 
 let cached: SupabaseClient | null = null;
 
 /**
  * Service-role Supabase client. Server-only — never import from a Client
- * Component. Bypasses RLS, so all auth/authorization must be done in code
+ * Component. Bypasses RLS, so all auth/authorization must happen in code
  * before calling it.
  */
 export function getSupabaseAdmin(): SupabaseClient {
   if (cached) return cached;
-  if (!serverEnv.SUPABASE_URL || !serverEnv.SUPABASE_SERVICE_ROLE_KEY) {
+  const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } = serverEnv;
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
     throw new Error(
-      "Supabase env vars are missing. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in .env.local."
+      "SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set in .env.local"
     );
   }
-  cached = createClient(
-    serverEnv.SUPABASE_URL,
-    serverEnv.SUPABASE_SERVICE_ROLE_KEY,
-    {
-      auth: { persistSession: false, autoRefreshToken: false },
-    }
-  );
+  cached = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
   return cached;
 }

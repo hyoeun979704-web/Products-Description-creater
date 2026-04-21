@@ -3,11 +3,6 @@
 
 create extension if not exists pgcrypto;
 
--- ---------------------------------------------------------------------------
--- sessions
--- Anonymous user bucket. One row per first-visit signed cookie.
--- Credit balance is authoritative here; the cookie only carries `id`.
--- ---------------------------------------------------------------------------
 create table if not exists sessions (
   id            uuid primary key default gen_random_uuid(),
   created_at    timestamptz not null default now(),
@@ -22,10 +17,6 @@ create table if not exists sessions (
 create index if not exists sessions_email_idx   on sessions (email);
 create index if not exists sessions_ip_hash_idx on sessions (ip_hash);
 
--- ---------------------------------------------------------------------------
--- credit_logs
--- Append-only audit of every credit-affecting event.
--- ---------------------------------------------------------------------------
 create table if not exists credit_logs (
   id         bigserial primary key,
   session_id uuid not null references sessions(id) on delete cascade,
@@ -37,10 +28,6 @@ create table if not exists credit_logs (
 );
 create index if not exists credit_logs_session_idx on credit_logs (session_id, created_at desc);
 
--- ---------------------------------------------------------------------------
--- generations
--- One row per successful Claude call.
--- ---------------------------------------------------------------------------
 create table if not exists generations (
   id            uuid primary key default gen_random_uuid(),
   session_id    uuid not null references sessions(id) on delete cascade,
@@ -58,10 +45,8 @@ create table if not exists generations (
 );
 create index if not exists generations_session_idx on generations (session_id, created_at desc);
 
--- ---------------------------------------------------------------------------
--- unsplash_images
--- Pre-curated pool. Hotlinked per Unsplash TOS — never re-hosted.
--- ---------------------------------------------------------------------------
+-- unsplash_images: hotlinked per Unsplash TOS — never re-hosted.
+-- category/slot_hint CHECK constraints mirror lib/unsplash/categories.ts.
 create table if not exists unsplash_images (
   id               uuid primary key default gen_random_uuid(),
   unsplash_id      text unique not null,
@@ -69,18 +54,17 @@ create table if not exists unsplash_images (
   url_small        text not null,
   photographer     text not null,
   photographer_url text not null,
-  category         text not null,
+  category         text not null check (category in (
+    'food','beverage','beauty','fashion','home','kitchen',
+    'electronics','outdoor','health','pet','baby','stationery','other'
+  )),
   tags             text[] not null default '{}',
-  slot_hint        text,
+  slot_hint        text check (slot_hint in ('hero','feature','spec','any')),
   active           boolean not null default true,
   created_at       timestamptz not null default now()
 );
 create index if not exists unsplash_images_category_idx on unsplash_images (category, active);
 
--- ---------------------------------------------------------------------------
--- payments
--- Toss payment orders. One row per orderId we send to Toss.
--- ---------------------------------------------------------------------------
 create table if not exists payments (
   id          uuid primary key default gen_random_uuid(),
   session_id  uuid not null references sessions(id) on delete cascade,
@@ -96,9 +80,6 @@ create table if not exists payments (
 );
 create index if not exists payments_session_idx on payments (session_id);
 
--- ---------------------------------------------------------------------------
--- updated_at trigger for generations + payments
--- ---------------------------------------------------------------------------
 create or replace function set_updated_at() returns trigger as $$
 begin
   new.updated_at := now();
@@ -116,12 +97,9 @@ create trigger payments_set_updated_at
   before update on payments
   for each row execute function set_updated_at();
 
--- ---------------------------------------------------------------------------
--- RLS
--- All access goes through the service-role client on the server (never the
--- browser), so we keep RLS disabled. If anon reads of unsplash_images are
--- ever needed from the client, enable RLS here and add a select-only policy.
--- ---------------------------------------------------------------------------
+-- All access goes through the service-role client on the server, so RLS stays
+-- off. If anon reads of unsplash_images are ever needed from the browser,
+-- enable RLS here and add a select-only policy.
 alter table sessions        disable row level security;
 alter table credit_logs     disable row level security;
 alter table generations     disable row level security;

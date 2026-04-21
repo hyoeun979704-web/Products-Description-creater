@@ -27,14 +27,17 @@ export function PhotoUpload({ items, onChange, max = 3 }: Props) {
     try {
       const room = max - items.length;
       const batch = Array.from(files).slice(0, room);
-      const processed: UploadedItem[] = [];
       for (const f of batch) {
         if (!f.type.startsWith("image/")) {
           throw new Error(`이미지 파일만 업로드 가능합니다: ${f.name}`);
         }
-        const { blob, previewUrl } = await compressImage(f);
-        processed.push({ blob, previewUrl, originalName: f.name });
       }
+      const processed = await Promise.all(
+        batch.map(async (f) => {
+          const { blob, previewUrl } = await compressImage(f);
+          return { blob, previewUrl, originalName: f.name };
+        })
+      );
       onChange([...items, ...processed]);
     } catch (e) {
       setError(e instanceof Error ? e.message : "업로드 실패");

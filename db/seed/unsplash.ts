@@ -8,17 +8,18 @@
  *      - slot_hint: one of hero|feature|spec|any (empty -> null)
  *   2. pnpm seed:unsplash
  *
- * The script upserts rows by `unsplash_id` — re-running is safe.
- * Runs outside Next.js (via tsx) and reads env from .env.local directly.
+ * Idempotent — upserts on `unsplash_id`. Runs outside Next.js via tsx and
+ * reads env from .env.local directly.
  */
 
 import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { createClient } from "@supabase/supabase-js";
 import { config as loadDotenv } from "dotenv";
+import { z } from "zod";
 import {
   UNSPLASH_CATEGORIES,
-  isUnsplashCategory,
+  SLOT_HINTS,
 } from "../../lib/unsplash/categories";
 
 loadDotenv({ path: resolve(process.cwd(), ".env.local") });
@@ -33,11 +34,11 @@ const REQUIRED_HEADER = [
   "category",
   "tags",
   "slot_hint",
-];
+] as const;
 
+// Minimal CSV parser: handles double-quoted fields with embedded commas and
+// doubled-quote escape (RFC 4180 subset).
 function parseCsv(src: string): Record<string, string>[] {
-  // Minimal CSV parser. Fields wrapped in double quotes may contain commas;
-  // escape a quote by doubling it.
   const rows: string[][] = [];
   let row: string[] = [];
   let field = "";
@@ -92,48 +93,26 @@ function parseCsv(src: string): Record<string, string>[] {
   });
 }
 
-type Row = {
-  unsplash_id: string;
-  url_regular: string;
-  url_small: string;
-  photographer: string;
-  photographer_url: string;
-  category: string;
-  tags: string[];
-  slot_hint: string | null;
-};
-
-function validate(r: Record<string, string>, idx: number): Row {
-  const missing = ["unsplash_id", "url_regular", "url_small", "photographer", "photographer_url", "category"]
-    .filter((k) => !r[k]);
-  if (missing.length) {
-    throw new Error(`row ${idx + 2}: missing ${missing.join(", ")}`);
-  }
-  if (!isUnsplashCategory(r.category)) {
-    throw new Error(
-      `row ${idx + 2}: invalid category "${r.category}". Allowed: ${UNSPLASH_CATEGORIES.join(", ")}`
-    );
-  }
-  const slot = r.slot_hint || null;
-  if (slot && !["hero", "feature", "spec", "any"].includes(slot)) {
-    throw new Error(`row ${idx + 2}: invalid slot_hint "${slot}"`);
-  }
-  return {
-    unsplash_id: r.unsplash_id,
-    url_regular: r.url_regular,
-    url_small: r.url_small,
-    photographer: r.photographer,
-    photographer_url: r.photographer_url,
-    category: r.category,
-    tags: r.tags ? r.tags.split("|").map((t) => t.trim()).filter(Boolean) : [],
-    slot_hint: slot,
-  };
-}
+const rowSchema = z.object({
+  unsplash_id: z.string().min(1),
+  url_regular: z.string().url(),
+  url_small: z.string().url(),
+  photographer: z.string().min(1),
+  photographer_url: z.string().url(),
+  category: z.enum(UNSPLASH_CATEGORIES),
+  tags: z
+    .string()
+    .transform((s) => s.split("|").map((t) => t.trim()).filter(Boolean)),
+  slot_hint: z
+    .string()
+    .transform((s) => (s === "" ? null : s))
+    .pipe(z.enum(SLOT_HINTS).nullable()),
+});
 
 async function main() {
   if (!existsSync(CSV_PATH)) {
     console.error(`CSV not found: ${CSV_PATH}`);
-    console.error("Create it with the header listed in the script header comment.");
+    console.error("See header comment for the required schema.");
     process.exit(1);
   }
   const url = process.env.SUPABASE_URL;
@@ -143,9 +122,17 @@ async function main() {
     process.exit(1);
   }
 
-  const src = readFileSync(CSV_PATH, "utf8");
-  const raw = parseCsv(src);
-  const rows = raw.map(validate);
+  const raw = parseCsv(readFileSync(CSV_PATH, "utf8"));
+  const rows = raw.map((r, idx) => {
+    const parsed = rowSchema.safeParse(r);
+    if (!parsed.success) {
+      const issues = parsed.error.issues
+        .map((i) => `    ${i.path.join(".") || "(root)"}: ${i.message}`)
+        .join("\n");
+      throw new Error(`row ${idx + 2} invalid:\n${issues}`);
+    }
+    return parsed.data;
+  });
   console.log(`Parsed ${rows.length} rows. Upserting...`);
 
   const supabase = createClient(url, key, {

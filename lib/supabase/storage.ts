@@ -44,6 +44,7 @@ export async function getSignedUploadUrl(path: string, expiresInSec = 3600) {
   const { data, error } = await supabase.storage
     .from(UPLOAD_BUCKET)
     .createSignedUrl(path, expiresInSec);
-  if (error || !data) throw new Error(`signed url failed: ${error?.message}`);
+  if (error) throw new Error(`signed url failed: ${error.message}`);
+  if (!data) throw new Error("signed url returned no data");
   return data.signedUrl;
 }
