@@ -25,6 +25,9 @@ export type ResolvedSlot = {
   slotId: string;
   url: string;
   source: "user" | "unsplash";
+  /** Unsplash photo id when source === "unsplash". Lets the editor exclude
+   * currently-visible images when re-sampling without fragile URL parsing. */
+  unsplashId?: string;
   credit?: {
     photographer: string;
     photographerUrl: string;

@@ -33,14 +33,22 @@ export default async function PreviewPage({
             {showWatermark ? "ON" : "OFF"}
           </p>
         </div>
-        {process.env.NODE_ENV !== "production" && (
+        <div className="flex items-center gap-4">
+          {process.env.NODE_ENV !== "production" && (
+            <Link
+              href={`/create/preview?id=${generation.id}&watermark=${showWatermark ? "off" : "on"}`}
+              className="text-xs text-gray-600 underline"
+            >
+              워터마크 {showWatermark ? "끄기" : "켜기"} (dev)
+            </Link>
+          )}
           <Link
-            href={`/create/preview?id=${generation.id}&watermark=${showWatermark ? "off" : "on"}`}
-            className="text-xs text-gray-600 underline"
+            href={`/create/edit?id=${generation.id}`}
+            className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
           >
-            워터마크 {showWatermark ? "끄기" : "켜기"} (dev)
+            편집하기
           </Link>
-        )}
+        </div>
       </div>
 
       <div className="mx-auto w-[860px] shadow-sm">

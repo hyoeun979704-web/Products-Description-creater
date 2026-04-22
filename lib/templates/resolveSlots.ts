@@ -49,6 +49,7 @@ export async function resolveSlots(
       slotId: req.slotId,
       url: pick.url,
       source: "unsplash",
+      unsplashId: pick.id,
       credit: {
         photographer: pick.photographer,
         photographerUrl: pick.photographerUrl,

@@ -1,5 +1,6 @@
 import type { GenerationOutput } from "@/lib/claude/schema";
 import type { PlatformId } from "@/lib/platforms/types";
+import type { ResolvedSlot } from "@/components/templates/registry";
 
 export type FixtureGeneration = {
   id: string;
@@ -7,6 +8,7 @@ export type FixtureGeneration = {
   platform: PlatformId;
   output_json: GenerationOutput;
   edited_json: GenerationOutput | null;
+  image_slots: Record<string, ResolvedSlot>;
   // Photos the user "uploaded" in the dummy flow. A real session uses signed
   // Storage URLs; fixtures use a public Unsplash hotlink for parity of behavior.
   input_photos: {
@@ -63,6 +65,7 @@ export const FIXTURE_GENERATIONS: Record<string, FixtureGeneration> = {
       },
     },
     edited_json: null,
+    image_slots: {},
     created_at: new Date().toISOString(),
   },
 };
