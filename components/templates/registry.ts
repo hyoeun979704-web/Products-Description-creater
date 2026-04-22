@@ -4,7 +4,11 @@
 // loadRenderBundle without pulling client components into a server bundle.
 
 import type { SlotHint } from "@/lib/unsplash/categories";
+import type { ResolvedSlot } from "@/lib/templates/slotSchema";
+import type { GenerationOutput } from "@/lib/claude/schema";
 import { DUMMY_TEMPLATE_DEF } from "./dummy/def";
+
+export { type ResolvedSlot } from "@/lib/templates/slotSchema";
 
 export const TEMPLATE_SECTIONS = ["hero", "features", "specs", "notice"] as const;
 export type TemplateSection = (typeof TEMPLATE_SECTIONS)[number];
@@ -21,26 +25,11 @@ export type TemplateConstraints = {
   specs: { min: number; max: number };
 };
 
-export type ResolvedSlot = {
-  slotId: string;
-  url: string;
-  source: "user" | "unsplash";
-  /** Unsplash photo id when source === "unsplash". Lets the editor exclude
-   * currently-visible images when re-sampling without fragile URL parsing. */
-  unsplashId?: string;
-  credit?: {
-    photographer: string;
-    photographerUrl: string;
-  };
-};
-
 /** Stable ref-callback map. Parent should memoize callbacks (useCallback)
  * so identity is stable across re-renders. */
 export type SectionRefs = Partial<
   Record<TemplateSection, (el: HTMLDivElement | null) => void>
 >;
-
-import type { GenerationOutput } from "@/lib/claude/schema";
 
 export type TemplateProps = {
   data: GenerationOutput;

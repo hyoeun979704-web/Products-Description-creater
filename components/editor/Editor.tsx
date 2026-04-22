@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { GenerationOutput } from "@/lib/claude/schema";
 import type {
   ResolvedSlot,
@@ -24,9 +24,26 @@ export function Editor({ generationId, template, initialData, initialSlots }: Pr
   const [data, setData] = useState<GenerationOutput>(initialData);
   const [slots, setSlots] = useState<Record<string, ResolvedSlot>>(initialSlots);
 
+  // Persist only slots the user actually changed, so generation.imageSlots
+  // represents authentic user overrides. Slots left as the auto-resolved
+  // default are NOT written — that way a future pool change or re-upload
+  // still re-resolves them.
+  const initialSlotsRef = useRef(initialSlots);
+  const slotsOverride = useMemo(() => {
+    const override: Record<string, ResolvedSlot> = {};
+    for (const id of Object.keys(slots)) {
+      const current = slots[id];
+      const initial = initialSlotsRef.current[id];
+      if (!initial || initial.url !== current.url || initial.source !== current.source) {
+        override[id] = current;
+      }
+    }
+    return override;
+  }, [slots]);
+
   const patch = useMemo(
-    () => ({ edited: data, imageSlots: slots }),
-    [data, slots]
+    () => ({ edited: data, imageSlots: slotsOverride }),
+    [data, slotsOverride]
   );
 
   const save = useCallback(
@@ -37,7 +54,7 @@ export function Editor({ generationId, template, initialData, initialSlots }: Pr
     [generationId]
   );
 
-  const status = useAutosave(patch, save, 500);
+  const { status, error } = useAutosave(patch, save, 500);
 
   return (
     <main className="min-h-screen bg-gray-100">
@@ -50,7 +67,7 @@ export function Editor({ generationId, template, initialData, initialSlots }: Pr
             </p>
           </div>
           <div className="flex items-center gap-4">
-            <StatusPill status={status} />
+            <StatusPill status={status} error={error} />
             <Link
               href={`/create/preview?id=${generationId}`}
               className="rounded-md bg-gray-900 px-4 py-2 text-xs font-medium text-white hover:bg-gray-800"
@@ -87,7 +104,7 @@ export function Editor({ generationId, template, initialData, initialSlots }: Pr
   );
 }
 
-function StatusPill({ status }: { status: AutosaveStatus }) {
+function StatusPill({ status, error }: { status: AutosaveStatus; error: string | null }) {
   const label: Record<AutosaveStatus, string> = {
     idle: "저장됨",
     pending: "입력중…",
@@ -102,5 +119,14 @@ function StatusPill({ status }: { status: AutosaveStatus }) {
     saved: "text-emerald-600",
     error: "text-red-600",
   };
-  return <span className={`text-xs ${color[status]}`}>{label[status]}</span>;
+  return (
+    <span className={`text-xs ${color[status]}`} title={error ?? undefined}>
+      {label[status]}
+      {status === "error" && error ? ` · ${truncate(error, 60)}` : ""}
+    </span>
+  );
+}
+
+function truncate(s: string, n: number) {
+  return s.length > n ? s.slice(0, n - 1) + "…" : s;
 }

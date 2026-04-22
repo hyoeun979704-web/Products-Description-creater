@@ -5,28 +5,14 @@ import {
   type GenerationEditPatch,
 } from "@/lib/data/generations";
 import { unsplashPool } from "@/lib/data/unsplash";
-import {
-  getTemplate,
-  type ResolvedSlot,
-} from "@/components/templates/registry";
+import { getTemplate } from "@/components/templates/registry";
+import type { ResolvedSlot } from "@/lib/templates/slotSchema";
+import { resolvedSlotSchema } from "@/lib/templates/slotSchema";
 import {
   generationOutputSchema,
   type GenerationOutput,
 } from "@/lib/claude/schema";
 import { z } from "zod";
-
-const resolvedSlotSchema: z.ZodType<ResolvedSlot> = z.object({
-  slotId: z.string(),
-  url: z.string().url(),
-  source: z.enum(["user", "unsplash"]),
-  unsplashId: z.string().optional(),
-  credit: z
-    .object({
-      photographer: z.string(),
-      photographerUrl: z.string().url(),
-    })
-    .optional(),
-});
 
 const editPatchSchema = z.object({
   edited: generationOutputSchema.optional(),

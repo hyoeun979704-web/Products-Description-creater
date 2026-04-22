@@ -1,7 +1,10 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import type { TemplateDef, ResolvedSlot } from "@/components/templates/registry";
+import { memo, useState } from "react";
+import type {
+  TemplateDef,
+  ResolvedSlot,
+} from "@/components/templates/registry";
 import { pickUnsplashForSlot } from "@/lib/actions/generations";
 
 type Props = {
@@ -11,56 +14,58 @@ type Props = {
   onChange: (next: Record<string, ResolvedSlot>) => void;
 };
 
-// Native HTML5 drag & drop. Only slots with the same `source` may swap.
-export function ImageSlotsPanel({ generationId, template, slots, onChange }: Props) {
+function canSwap(a: ResolvedSlot | undefined, b: ResolvedSlot | undefined) {
+  return !!a && !!b && a.source === b.source;
+}
+
+// Native HTML5 drag & drop. Only slots with matching `source` may swap.
+function ImageSlotsPanelImpl({ generationId, template, slots, onChange }: Props) {
   const [dragFrom, setDragFrom] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
-  const [busySlotId, setBusySlotId] = useState<string | null>(null);
+  const [busy, setBusy] = useState<ReadonlySet<string>>(() => new Set());
 
-  function onDragStart(slotId: string) {
-    return () => setDragFrom(slotId);
+  function allowDrop(targetId: string, e: React.DragEvent) {
+    if (!dragFrom || dragFrom === targetId) return;
+    if (!canSwap(slots[dragFrom], slots[targetId])) return;
+    e.preventDefault();
   }
 
-  function onDragOver(targetId: string) {
-    return (e: React.DragEvent) => {
-      if (!dragFrom || dragFrom === targetId) return;
-      const a = slots[dragFrom];
-      const b = slots[targetId];
-      if (!a || !b || a.source !== b.source) return;
-      e.preventDefault();
-    };
-  }
-
-  function onDrop(targetId: string) {
-    return (e: React.DragEvent) => {
-      e.preventDefault();
-      if (!dragFrom || dragFrom === targetId) return;
-      const a = slots[dragFrom];
-      const b = slots[targetId];
-      if (!a || !b || a.source !== b.source) return;
-      const next: Record<string, ResolvedSlot> = {
-        ...slots,
-        [dragFrom]: { ...b, slotId: dragFrom },
-        [targetId]: { ...a, slotId: targetId },
-      };
-      onChange(next);
-      setDragFrom(null);
-    };
-  }
-
-  function resampleUnsplash(slotId: string) {
-    const excludeIds = Object.values(slots)
-      .filter((s) => s?.source === "unsplash" && s.unsplashId)
-      .map((s) => s!.unsplashId!);
-    setBusySlotId(slotId);
-    startTransition(async () => {
-      try {
-        const next = await pickUnsplashForSlot(generationId, slotId, excludeIds);
-        if (next) onChange({ ...slots, [slotId]: next });
-      } finally {
-        setBusySlotId(null);
-      }
+  function commitDrop(targetId: string, e: React.DragEvent) {
+    e.preventDefault();
+    if (!dragFrom || dragFrom === targetId) return;
+    const a = slots[dragFrom];
+    const b = slots[targetId];
+    if (!canSwap(a, b)) return;
+    onChange({
+      ...slots,
+      [dragFrom]: { ...b!, slotId: dragFrom },
+      [targetId]: { ...a!, slotId: targetId },
     });
+    setDragFrom(null);
+  }
+
+  async function resampleUnsplash(slotId: string) {
+    setBusy((prev) => {
+      const next = new Set(prev);
+      next.add(slotId);
+      return next;
+    });
+    try {
+      // Recompute exclude list from the *current* slots map so a concurrent
+      // re-sample on another slot doesn't produce a duplicate.
+      const excludeIds = Object.values(slots)
+        .filter((s): s is ResolvedSlot & { unsplashId: string } =>
+          s?.source === "unsplash" && !!s.unsplashId
+        )
+        .map((s) => s.unsplashId);
+      const next = await pickUnsplashForSlot(generationId, slotId, excludeIds);
+      if (next) onChange({ ...slots, [slotId]: next });
+    } finally {
+      setBusy((prev) => {
+        const next = new Set(prev);
+        next.delete(slotId);
+        return next;
+      });
+    }
   }
 
   return (
@@ -73,19 +78,19 @@ export function ImageSlotsPanel({ generationId, template, slots, onChange }: Pro
         {template.slots.map((slot) => {
           const resolved = slots[slot.id];
           if (!resolved) return null;
-          const canDrag = true;
           const isUnsplash = resolved.source === "unsplash";
-          const dimmed = dragFrom && slots[dragFrom]?.source !== resolved.source;
+          const dimmed = dragFrom && !canSwap(slots[dragFrom], resolved);
+          const isBusy = busy.has(slot.id);
           return (
             <div
               key={slot.id}
-              draggable={canDrag}
-              onDragStart={onDragStart(slot.id)}
-              onDragOver={onDragOver(slot.id)}
-              onDrop={onDrop(slot.id)}
+              draggable
+              onDragStart={() => setDragFrom(slot.id)}
+              onDragOver={(e) => allowDrop(slot.id, e)}
+              onDrop={(e) => commitDrop(slot.id, e)}
               onDragEnd={() => setDragFrom(null)}
               className={
-                "group relative overflow-hidden rounded-md border border-gray-200 " +
+                "relative overflow-hidden rounded-md border border-gray-200 " +
                 (dimmed ? "opacity-40 " : "") +
                 (dragFrom === slot.id ? "ring-2 ring-gray-900 " : "")
               }
@@ -115,10 +120,10 @@ export function ImageSlotsPanel({ generationId, template, slots, onChange }: Pro
                   <button
                     type="button"
                     onClick={() => resampleUnsplash(slot.id)}
-                    disabled={isPending && busySlotId === slot.id}
+                    disabled={isBusy}
                     className="text-[11px] text-gray-700 underline hover:text-gray-900 disabled:text-gray-300"
                   >
-                    {busySlotId === slot.id ? "교체중…" : "다른 이미지"}
+                    {isBusy ? "교체중…" : "다른 이미지"}
                   </button>
                 )}
               </div>
@@ -129,3 +134,5 @@ export function ImageSlotsPanel({ generationId, template, slots, onChange }: Pro
     </div>
   );
 }
+
+export const ImageSlotsPanel = memo(ImageSlotsPanelImpl);
